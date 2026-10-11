@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from config import data_root_path
 
 
-calib_path = data_root_path / "sequences/00/calib.txt"
+# calib_path = data_root_path / "sequences/00/calib.txt"
 pose_path = data_root_path / "poses/00.txt"
 
 def load_calib(path):
@@ -19,15 +19,24 @@ def load_calib(path):
 
 
 def load_poses(path):
-    poses = np.loadtxt(path).reshape(-1, 3, 4)   
+    poses_34 = np.loadtxt(path).reshape(-1, 3, 4)
+    N = poses_34.shape[0]
+    identity_stack = np.tile(np.eye(4),(N,1,1))
+    identity_stack[:, :3, :] = poses_34
+
     # R = poses[:, :, :3]                                     
     # t = poses[:, :, 3] 
-    return poses                                     
+    return identity_stack                                     
 
-print(calib_path)
-K,B = load_calib(calib_path)
-print(K)
+# check = load_poses(pose_path)
+# print(check.shape)
+# print(check[0])
+# print(calib_path)
+# K,B = load_calib(calib_path)
+# print(K)
 # plt.plot(t[:, 0], t[:, 2])          # x vs z = bird's-eye view
 # plt.axis("equal"); plt.xlabel("x (m)"); plt.ylabel("z (m)")
 # plt.show()
+
+
 
