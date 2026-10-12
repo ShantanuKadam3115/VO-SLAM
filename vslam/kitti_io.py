@@ -1,16 +1,16 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from config import data_root_path
+# from vslam.config import data_root_path
 
 
 # calib_path = data_root_path / "sequences/00/calib.txt"
-pose_path = data_root_path / "poses/00.txt"
+# pose_path = data_root_path / "poses/00.txt"
 
 def load_calib(path):
     calib = {}
-    for line in open(path , "r", encoding="utf-8"):
-        key, vals = line.split(":", 1)
-        calib[key] = np.array(vals.split(), dtype=float).reshape(3, 4)
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            key, vals = line.split(":", 1)
+            calib[key] = np.array(vals.split(), dtype=float).reshape(3, 4)
 
     P0 = calib["P0"]
     K  = P0[:, :3]
@@ -23,11 +23,11 @@ def load_poses(path):
     N = poses_34.shape[0]
     identity_stack = np.tile(np.eye(4),(N,1,1))
     identity_stack[:, :3, :] = poses_34
-
-    # R = poses[:, :, :3]                                     
-    # t = poses[:, :, 3] 
     return identity_stack                                     
 
+
+# R = poses[:, :, :3]                                     
+# t = poses[:, :, 3] 
 # check = load_poses(pose_path)
 # print(check.shape)
 # print(check[0])
