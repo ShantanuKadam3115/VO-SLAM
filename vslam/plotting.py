@@ -9,7 +9,7 @@ def plot_trajectories(trajs, labels, title, save_path=None, ax=None):
     else:
         fig = ax.figure
 
-    for T, label in zip(trajs, labels):
+    for T, label in zip(trajs, labels, strict=True):
         x = T[:, 0, 3]
         z = T[:, 2, 3]
         (line,) = ax.plot(x, z, label=label, linewidth=1.2)
