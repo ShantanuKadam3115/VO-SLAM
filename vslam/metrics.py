@@ -57,6 +57,7 @@ def ate(est_poses, gt_poses, align="sim3"):
     est_xyz = est_poses[:, :3, 3]
     gt_xyz = gt_poses[:, :3, 3]
 
+    
     if align == "sim3":
         s, R, t = umeyama(est_xyz, gt_xyz, with_scale=True)
     elif align == "se3":
