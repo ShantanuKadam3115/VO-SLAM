@@ -12,7 +12,6 @@ N = gt.shape[0]
 # "Never moves" baseline: the camera sits at the origin for every frame.
 baseline = np.tile(np.eye(4), (N, 1, 1))
 
-print(baseline[0], baseline[1])
 
 rmse_none, _ = ate(baseline, gt, align="none")
 rmse_se3, _ = ate(baseline, gt, align="se3")

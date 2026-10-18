@@ -59,7 +59,21 @@ def test_ate_sim3_vs_se3():
     assert rmse_se3 > 1.0  # can't undo the 2.5x scale
 
 
+def test_sim3_raises_on_zero_spread():
+    # Zero-motion baseline: every est position is identical, so scale is undefined.
+    gt = load_poses(data_root_path / "poses/00.txt")
+    baseline = np.tile(np.eye(4), (gt.shape[0], 1, 1))
+
+    try:
+        ate(baseline, gt, align="sim3")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for zero-spread est")
+
+
 if __name__ == "__main__":
     test_umeyama_recovers_known_transform()
     test_ate_sim3_vs_se3()
+    test_sim3_raises_on_zero_spread()
     print("all passed")
