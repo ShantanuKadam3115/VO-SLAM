@@ -1,4 +1,6 @@
 import numpy as np
+import os
+import cv2
 
 
 
@@ -24,5 +26,16 @@ def load_poses(path):
     identity_stack[:, :3, :] = poses_34
     return identity_stack                                     
 
+
+def load_image(seq_dir, idx, cam=0):
+    padded = f"{idx:06d}"
+    image_path = os.path.join(seq_dir, f"-{padded}.png")
+    try:
+        cv2.imread(image_path,cv2.IMREAD_GRAYSCALE)        
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("path of image directory is incorrect")
+    
 
 
