@@ -101,11 +101,9 @@ def rpe(est_pose, gt_pose, delta=1):
     est_rel = np.linalg.inv(est_pose[:-delta]) @ est_pose[delta:]
     gt_rel = np.linalg.inv(gt_pose[:-delta]) @ gt_pose[delta:]
 
-    print(np.linalg.inv(est_pose[:-delta]).shape, est_pose[delta:].shape)
     # Error transform: identity if est moved exactly like gt
     E = np.linalg.inv(gt_rel) @ est_rel
 
-    # print(E.shape)
 
     trans_err = np.linalg.norm(E[:, :3, 3], axis=1)
 

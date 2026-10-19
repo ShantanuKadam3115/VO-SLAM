@@ -77,25 +77,25 @@ def test_rpe():
     
     # Identical trajectories: no relative error at all.
     t_err, r_err = rpe(gt, gt)
-    # assert t_err < 1e-9 and r_err < 1e-6
+    assert t_err < 1e-9 and r_err < 1e-6
 
-    # # Raw est has the 2.5x scale baked in, so translation RPE is large...
-    # t_raw, r_raw = rpe(est, gt, delta=10)
-    # # ...but a global rotation doesn't change relative rotations.
-    # assert t_raw > 1.0
-    # assert r_raw < 1e-6
+    # Raw est has the 2.5x scale baked in, so translation RPE is large...
+    t_raw, r_raw = rpe(est, gt, delta=10)
+    # ...but a global rotation doesn't change relative rotations.
+    assert t_raw > 1.0
+    assert r_raw < 1e-6
 
-    # # After Sim(3) alignment the scale is fixed and RPE goes to ~0.
-    # _, aligned = ate(est, gt, align="sim3")
-    # t_al, r_al = rpe(aligned, gt, delta=10)
-    # print(f"RPE raw: {t_raw:.2f} m, aligned: {t_al:.2e} m")
-    # assert t_al < 1e-6 and r_al < 1e-6
+    # After Sim(3) alignment the scale is fixed and RPE goes to ~0.
+    _, aligned = ate(est, gt, align="sim3")
+    t_al, r_al = rpe(aligned, gt, delta=10)
+    print(f"RPE raw: {t_raw:.2f} m, aligned: {t_al:.2e} m")
+    assert t_al < 1e-6 and r_al < 1e-6
 
 
 if __name__ == "__main__":
-    # test_umeyama_recovers_known_transform()
-    # test_ate_sim3_vs_se3()
-    # test_sim3_raises_on_zero_spread()
+    test_umeyama_recovers_known_transform()
+    test_ate_sim3_vs_se3()
+    test_sim3_raises_on_zero_spread()
     test_rpe()
-    # print("all passed")
+    print("all passed")
     
