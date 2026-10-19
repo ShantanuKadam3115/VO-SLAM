@@ -20,6 +20,7 @@ def umeyama(est, gt, with_scale=True):
     # Cross-covariance (3x3): gt on the left because we map est -> gt
     Sigma = gt_c.T @ est_c / N
 
+
     U, D, Vt = np.linalg.svd(Sigma)
 
     # Reflection guard: without it, R could have det = -1 (a mirror)
@@ -67,6 +68,7 @@ def ate(est_poses, gt_poses, align="sim3"):
     else:
         raise ValueError(f"unknown align mode: {align!r}")
 
+    
     # Apply the same transform to every pose: positions get s R p + t,
     # orientations get R R_i (scale doesn't touch rotations).
     aligned = est_poses.copy()
@@ -76,3 +78,41 @@ def ate(est_poses, gt_poses, align="sim3"):
     err = gt_xyz - aligned[:, :3, 3]
     rmse = np.sqrt(np.mean(np.sum(err**2, axis=1)))
     return rmse, aligned
+
+
+def rpe(est_pose, gt_pose, delta=1):
+    """Relative Pose Error over a fixed frame gap (drift per `delta` frames).
+
+    est_pose, gt_pose: (N, 4, 4) camera-to-world poses.
+    delta: frame gap between the pose pairs being compared.
+    Returns (trans_rmse [m], rot_rmse [deg]).
+
+    RPE ignores the global frame, but not scale: for monocular VO, pass the
+    Sim(3)-aligned poses from ate() so the translation error is in metres.
+    """
+    est_pose = np.asarray(est_pose, dtype=float)
+    gt_pose = np.asarray(gt_pose, dtype=float)
+    assert est_pose.shape == gt_pose.shape
+    assert 0 < delta < est_pose.shape[0]
+
+    # print(est_pose.shape , gt_pose.shape)
+
+    # Relative motion from frame i to i+delta: T_i^-1 T_{i+delta}
+    est_rel = np.linalg.inv(est_pose[:-delta]) @ est_pose[delta:]
+    gt_rel = np.linalg.inv(gt_pose[:-delta]) @ gt_pose[delta:]
+
+    print(np.linalg.inv(est_pose[:-delta]).shape, est_pose[delta:].shape)
+    # Error transform: identity if est moved exactly like gt
+    E = np.linalg.inv(gt_rel) @ est_rel
+
+    # print(E.shape)
+
+    trans_err = np.linalg.norm(E[:, :3, 3], axis=1)
+
+    # Rotation angle from trace(R) = 1 + 2 cos(theta); clip guards rounding
+    cos_theta = (np.trace(E[:, :3, :3], axis1=1, axis2=2) - 1) / 2
+    rot_err = np.degrees(np.arccos(np.clip(cos_theta, -1.0, 1.0)))
+
+    trans_rmse = np.sqrt(np.mean(trans_err**2))
+    rot_rmse = np.sqrt(np.mean(rot_err**2))
+    return trans_rmse, rot_rmse

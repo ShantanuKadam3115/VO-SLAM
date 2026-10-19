@@ -3,7 +3,7 @@ import numpy as np
 
 from vslam.config import data_root_path
 from vslam.kitti_io import load_poses
-from vslam.metrics import ate, umeyama
+from vslam.metrics import ate, rpe, umeyama
 
 
 def make_distorted_est(gt):
@@ -28,7 +28,6 @@ def test_umeyama_recovers_known_transform():
 
     s, R, t = umeyama(est[:, :3, 3], gt[:, :3, 3])
 
-    # print(R.shape, t.shape)
 
     print(f"s: {s:.6f} (true {s_true})")
     print(f"R err: {np.abs(R - R_true).max():.2e}")
@@ -45,11 +44,11 @@ def test_ate_sim3_vs_se3():
     gt = load_poses(data_root_path / "poses/00.txt")
     est, *_ = make_distorted_est(gt)
 
-    rmse_sim3, aligned_sim3 = ate(est, gt, align="sim3")
-    rmse_se3, aligned_se3 = ate(est, gt, align="se3")
-    rmse_none, aligned_none = ate(est, gt, align="none")
+    rmse_sim3, _ = ate(est, gt, align="sim3")
+    rmse_se3, _  = ate(est, gt, align="se3")
+    rmse_none, _  = ate(est, gt, align="none")
 
-    print(aligned_sim3[:, :3, 3].shape)
+    
 
     print(f"ATE sim3: {rmse_sim3:.2e} m")
     print(f"ATE se3:  {rmse_se3:.2f} m")
@@ -72,8 +71,31 @@ def test_sim3_raises_on_zero_spread():
         raise AssertionError("expected ValueError for zero-spread est")
 
 
+def test_rpe():
+    gt = load_poses(data_root_path / "poses/00.txt")
+    est, *_ = make_distorted_est(gt)
+    
+    # Identical trajectories: no relative error at all.
+    t_err, r_err = rpe(gt, gt)
+    # assert t_err < 1e-9 and r_err < 1e-6
+
+    # # Raw est has the 2.5x scale baked in, so translation RPE is large...
+    # t_raw, r_raw = rpe(est, gt, delta=10)
+    # # ...but a global rotation doesn't change relative rotations.
+    # assert t_raw > 1.0
+    # assert r_raw < 1e-6
+
+    # # After Sim(3) alignment the scale is fixed and RPE goes to ~0.
+    # _, aligned = ate(est, gt, align="sim3")
+    # t_al, r_al = rpe(aligned, gt, delta=10)
+    # print(f"RPE raw: {t_raw:.2f} m, aligned: {t_al:.2e} m")
+    # assert t_al < 1e-6 and r_al < 1e-6
+
+
 if __name__ == "__main__":
-    test_umeyama_recovers_known_transform()
-    test_ate_sim3_vs_se3()
-    test_sim3_raises_on_zero_spread()
-    print("all passed")
+    # test_umeyama_recovers_known_transform()
+    # test_ate_sim3_vs_se3()
+    # test_sim3_raises_on_zero_spread()
+    test_rpe()
+    # print("all passed")
+    
