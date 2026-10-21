@@ -80,6 +80,14 @@ def ate(est_poses, gt_poses, align="sim3"):
     return rmse, aligned
 
 
+def rotation_angle_deg(R):
+    """Rotation angle in degrees of a (3, 3) or stacked (..., 3, 3) rotation."""
+    R = np.asarray(R, dtype=float)
+    # trace(R) = 1 + 2 cos(theta); clip guards rounding just outside [-1, 1]
+    cos_theta = (np.trace(R, axis1=-2, axis2=-1) - 1) / 2
+    return np.degrees(np.arccos(np.clip(cos_theta, -1.0, 1.0)))
+
+
 def rpe(est_pose, gt_pose, delta=1):
     """Relative Pose Error over a fixed frame gap (drift per `delta` frames).
 
@@ -107,9 +115,7 @@ def rpe(est_pose, gt_pose, delta=1):
 
     trans_err = np.linalg.norm(E[:, :3, 3], axis=1)
 
-    # Rotation angle from trace(R) = 1 + 2 cos(theta); clip guards rounding
-    cos_theta = (np.trace(E[:, :3, :3], axis1=1, axis2=2) - 1) / 2
-    rot_err = np.degrees(np.arccos(np.clip(cos_theta, -1.0, 1.0)))
+    rot_err = rotation_angle_deg(E[:, :3, :3])
 
     trans_rmse = np.sqrt(np.mean(trans_err**2))
     rot_rmse = np.sqrt(np.mean(rot_err**2))

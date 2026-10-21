@@ -1,5 +1,4 @@
 import numpy as np
-import os
 import cv2
 
 
@@ -28,14 +27,12 @@ def load_poses(path):
 
 
 def load_image(seq_dir, idx, cam=0):
-    padded = f"{idx:06d}"
-    image_path = os.path.join(seq_dir, f"-{padded}.png")
-    try:
-        cv2.imread(image_path,cv2.IMREAD_GRAYSCALE)        
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("path of image directory is incorrect")
-    
+    # e.g. D:\CV\Data\kitti\dataset\sequences\00\image_0\000000.png
+    image_path = seq_dir / f"image_{cam}" / f"{idx:06d}.png"
+
+    img = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise FileNotFoundError(f"could not read image: {image_path}")
+    return img
 
 
