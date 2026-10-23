@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 
 from vslam.config import RESULTS_DIR, data_root_path
 from vslam.features import match_features
+from vslam.geometry import project, triangulate
 from vslam.kitti_io import load_calib, load_image, load_poses
 from vslam.metrics import rotation_angle_deg
 
@@ -71,9 +72,60 @@ print(f"t_est dir:  {np.round(t_est_hat, 3)}")
 print(f"rotation error:        {rot_err:.3f} deg")
 print(f"translation dir error: {trans_dir_err:.3f} deg")
 
-plt.figure(figsize=(14, 5))
-plt.imshow(cv.cvtColor(vis, cv.COLOR_BGR2RGB))
-plt.title(f"ORB matches, frame 0 -> 1: {inliers.sum()} inliers (green), "
-          f"{(~inliers).sum()} outliers (red)")
-plt.axis("off")
-plt.show()
+
+## ---- Triangulation (DLT) of the RANSAC inliers ----
+
+## Camera 1 is the world frame: P1 = K [I | 0], P2 = K [R | t]
+P1 = K @ np.hstack([np.eye(3), np.zeros((3, 1))])
+P2 = K @ np.hstack([R_est, t_est])
+in1, in2 = pts1[inliers], pts2[inliers]
+X = triangulate(P1, P2, in1, in2)
+
+## Check 1: matches OpenCV (note the transposes and the homogeneous (4, N) output)
+X_cv_h = cv.triangulatePoints(P1, P2, in1.T, in2.T)
+X_cv = (X_cv_h[:3] / X_cv_h[3]).T
+print(f"\ntriangulated {len(X)} inliers")
+print(f"max |X - X_opencv|: {np.abs(X - X_cv).max():.2e}")
+
+# ## Check 2: in front of both cameras
+z1 = X[:, 2]
+z2 = (X @ R_est.T + t_est.ravel())[:, 2]
+in_front = (z1 > 0) & (z2 > 0)
+print(f"in front of both cameras: {in_front.mean():.1%}")
+
+## Check 3: reprojection error
+err1 = np.linalg.norm(project(P1, X) - in1, axis=1)
+err2 = np.linalg.norm(project(P2, X) - in2, axis=1)
+print(f"reprojection error, median: cam1 {np.median(err1):.3f} px, cam2 {np.median(err2):.3f} px")
+
+## Check 4: plausibility. Units are |t| = 1, so scale by the true step length.
+step = np.linalg.norm(t_gt)
+X_m = X * step
+## Parked car on the right of frame 0 (pixel box picked from the match image)
+car = (in1[:, 0] > 760) & (in1[:, 0] < 1020) & (in1[:, 1] > 190) & (in1[:, 1] < 330) & in_front
+print(f"right parked car: {car.sum()} points, median depth {np.median(X_m[car, 2]):.1f} m")
+
+## Top-down view: x (right) vs z (forward), only points in front, clipped to a readable range
+keep = in_front & (X_m[:, 2] < 80)
+fig, ax = plt.subplots(figsize=(7, 8))
+ax.scatter(X_m[keep, 0], X_m[keep, 2], s=4, color="tab:blue", alpha=0.6, linewidths=0)
+ax.scatter(X_m[car, 0], X_m[car, 2], s=10, color="tab:orange", linewidths=0)
+ax.annotate("right parked car", (np.median(X_m[car, 0]), np.median(X_m[car, 2])),
+            xytext=(8, 0), textcoords="offset points", fontsize=9)
+## Camera centres: C1 = 0, C2 = -R^T t (scaled to metres)
+C2 = -R_est.T @ t_est.ravel() * step
+ax.scatter([0, C2[0]], [0, C2[2]], marker="^", s=60, color="black", zorder=3)
+ax.annotate("cameras", (0, 0), xytext=(8, -4), textcoords="offset points", fontsize=9)
+ax.set_aspect("equal")
+ax.set_xlabel("x [m] (right)")
+ax.set_ylabel("z [m] (forward)")
+ax.set_title(f"Triangulated inliers, frame 0 -> 1 (top-down, z < 80 m, n = {keep.sum()})")
+ax.grid(True, alpha=0.3)
+fig.savefig(RESULTS_DIR / "p1_triangulated_topdown_00_0-1.png", dpi=150, bbox_inches="tight")
+
+# plt.figure(figsize=(14, 5))
+# plt.imshow(cv.cvtColor(vis, cv.COLOR_BGR2RGB))
+# plt.title(f"ORB matches, frame 0 -> 1: {inliers.sum()} inliers (green), "
+#           f"{(~inliers).sum()} outliers (red)")
+# plt.axis("off")
+# plt.show()
