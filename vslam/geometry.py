@@ -1,4 +1,34 @@
+import cv2
 import numpy as np
+
+
+def estimate_relative_pose(pts1, pts2, K, threshold=1.0):
+    """Relative pose from matched pixels via the 5-point algorithm + RANSAC.
+
+    pts1, pts2: (N, 2) pixel coordinates of the matches.
+    threshold: max pixel distance from a point to its epipolar line for an inlier.
+    Returns (R, t, inlier_mask): X_2 = R X_1 + t with |t| = 1, t of shape (3, 1),
+    and inlier_mask an (N,) bool array of the RANSAC inliers.
+    """
+    if len(pts1) < 5:
+        raise ValueError(f"need >= 5 matches for the 5-point algorithm, got {len(pts1)}")
+
+    # E has 5 DoF (3 rotation + 2 for the direction of t; scale is unobservable)
+    E, mask = cv2.findEssentialMat(pts1, pts2, K, method=cv2.RANSAC,
+                                   prob=0.999, threshold=threshold)
+    
+    if E is None:
+        raise ValueError("findEssentialMat found no solution")
+    # Degenerate input can return several stacked 3x3 solutions; take the best one
+    E = E[:3]
+
+
+    # E decomposes into 4 (R, t) candidates; the cheirality check keeps the one that
+    # puts the points in front of both cameras. Pass a copy: recoverPose overwrites
+    # the mask with its own (stricter) cheirality mask, and we return the RANSAC one.
+    _, R, t, _ = cv2.recoverPose(E, pts1, pts2, K, mask=mask.copy())
+
+    return R, t, mask.ravel().astype(bool)
 
 
 def triangulate(P1, P2, pts1, pts2):
@@ -40,6 +70,14 @@ def triangulate(P1, P2, pts1, pts2):
     X_h = Vt[:, -1, :]  # (N, 4)
 
     return X_h[:, :3] / X_h[:, 3:4]
+
+
+def parallax_deg(X, C1, C2):
+    """Angle in degrees between the rays C1 -> X and C2 -> X, for (N, 3) points X."""
+    a = X - C1
+    b = X - C2
+    cos = np.sum(a * b, axis=1) / (np.linalg.norm(a, axis=1) * np.linalg.norm(b, axis=1))
+    return np.degrees(np.arccos(np.clip(cos, -1.0, 1.0)))
 
 
 def project(P, X):

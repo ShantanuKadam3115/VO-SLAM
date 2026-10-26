@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 
 from vslam.config import RESULTS_DIR, data_root_path
 from vslam.features import match_features
-from vslam.geometry import project, triangulate
+from vslam.geometry import estimate_relative_pose, parallax_deg, project, triangulate
 from vslam.kitti_io import load_calib, load_image, load_poses
 from vslam.metrics import rotation_angle_deg
 
@@ -26,16 +26,10 @@ bf = cv.BFMatcher(cv.NORM_HAMMING)
 pts1, pts2 = match_features(img1, img2, orb, bf)
 print(f"matches after ratio test: {len(pts1)}")
 
-## 5-point RANSAC: E has 5 DoF (3 rotation + 2 for the direction of t; scale is unobservable).
-## threshold = max pixel distance from a point to its epipolar line to count as an inlier.
-E, mask = cv.findEssentialMat(pts1, pts2, K, method=cv.RANSAC, prob=0.999, threshold=1.0)
-inliers = mask.ravel().astype(bool)
+## 5-point RANSAC + cheirality. Convention: X_2 = R X_1 + t, with |t| = 1.
+R_est, t_est, inliers = estimate_relative_pose(pts1, pts2, K, threshold=1.0)
 print(f"RANSAC inliers: {inliers.sum()} / {len(pts1)}")
 
-## E decomposes into 4 (R, t) candidates; the cheirality check keeps the one that puts
-## the points in front of both cameras. Convention: X_2 = R X_1 + t, with |t| = 1.
-n_good, R_est, t_est, _ = cv.recoverPose(E, pts1, pts2, K, mask=mask.copy())
-print(f"passed cheirality: {n_good}")
 
 
 ## Draw each match as an arrow from its frame-0 position to its frame-1 position, on frame 1.
@@ -51,6 +45,7 @@ save_path.parent.mkdir(parents=True, exist_ok=True)
 cv.imwrite(str(save_path), vis)
 
 ## Compare with ground truth.
+## gt[i] --> camera to world
 ## KITTI T[i] maps camera-i coords -> frame-0 coords, so T_rel = inv(T[0]) @ T[1]
 ## maps frame 1 -> frame 0. OpenCV's (R, t) map frame 0 -> frame 1, so compare
 ## against inv(T_rel).
@@ -58,7 +53,6 @@ gt = load_poses(data_root_path / "poses/00.txt")
 T_rel = np.linalg.inv(gt[0]) @ gt[1]
 T_gt = np.linalg.inv(T_rel)
 R_gt, t_gt = T_gt[:3, :3], T_gt[:3, 3]
-
 rot_err = rotation_angle_deg(R_gt.T @ R_est)
 
 ## Scale is unknown, so only the direction of t can be compared
@@ -73,7 +67,7 @@ print(f"rotation error:        {rot_err:.3f} deg")
 print(f"translation dir error: {trans_dir_err:.3f} deg")
 
 
-## ---- Triangulation (DLT) of the RANSAC inliers ----
+# ## ---- Triangulation (DLT) of the RANSAC inliers ----
 
 ## Camera 1 is the world frame: P1 = K [I | 0], P2 = K [R | t]
 P1 = K @ np.hstack([np.eye(3), np.zeros((3, 1))])
@@ -97,6 +91,18 @@ print(f"in front of both cameras: {in_front.mean():.1%}")
 err1 = np.linalg.norm(project(P1, X) - in1, axis=1)
 err2 = np.linalg.norm(project(P2, X) - in2, axis=1)
 print(f"reprojection error, median: cam1 {np.median(err1):.3f} px, cam2 {np.median(err2):.3f} px")
+
+## Parallax: angle between the rays C1 -> X and C2 -> X (C1 = 0, C2 = -R^T t).
+## Near-zero parallax means depth is barely constrained, so its sign is noise.
+C2_unit = -R_est.T @ t_est.ravel()
+parallax = parallax_deg(X, np.zeros(3), C2_unit)
+big = parallax > 1.0
+print(f"parallax > 1 deg: {big.sum()} points, in front of both: {in_front[big].mean():.1%}")
+## Points right at the epipole (the scooter ahead) triangulate onto the baseline with
+## ~180 deg "parallax" and large reprojection error, so gate on reprojection too.
+good_geom = big & (np.maximum(err1, err2) < 2.0)
+print(f"  ... and reprojection < 2 px: {good_geom.sum()} points, "
+      f"in front of both: {in_front[good_geom].mean():.1%}")
 
 ## Check 4: plausibility. Units are |t| = 1, so scale by the true step length.
 step = np.linalg.norm(t_gt)
@@ -123,9 +129,9 @@ ax.set_title(f"Triangulated inliers, frame 0 -> 1 (top-down, z < 80 m, n = {keep
 ax.grid(True, alpha=0.3)
 fig.savefig(RESULTS_DIR / "p1_triangulated_topdown_00_0-1.png", dpi=150, bbox_inches="tight")
 
-# plt.figure(figsize=(14, 5))
-# plt.imshow(cv.cvtColor(vis, cv.COLOR_BGR2RGB))
-# plt.title(f"ORB matches, frame 0 -> 1: {inliers.sum()} inliers (green), "
-#           f"{(~inliers).sum()} outliers (red)")
-# plt.axis("off")
-# plt.show()
+plt.figure(figsize=(14, 5))
+plt.imshow(cv.cvtColor(vis, cv.COLOR_BGR2RGB))
+plt.title(f"ORB matches, frame 0 -> 1: {inliers.sum()} inliers (green), "
+          f"{(~inliers).sum()} outliers (red)")
+plt.axis("off")
+plt.show()
