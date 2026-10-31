@@ -2,7 +2,7 @@
 __pycache__/
 *.pyc
 .vscode/
-results/
+# results/
 
 .DS_Store
 Thumbs.db
@@ -11,4 +11,5 @@ Thumbs.db
 *.zip
 *.tar
 *.tar.gz
+*.npy
 
