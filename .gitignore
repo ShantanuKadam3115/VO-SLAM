@@ -12,4 +12,5 @@ Thumbs.db
 *.tar
 *.tar.gz
 *.npy
+*.np*
 
