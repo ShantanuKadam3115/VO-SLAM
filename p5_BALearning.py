@@ -76,10 +76,21 @@ idx_W, idx_K1 = match_descriptors(World_des, des_K1_L, bf)
 matched_World_points = World_points[idx_W]
 matched_pts_K1_L = pts_K1_L[idx_K1]
 
-# print(World_points.shape, matched_World_points.shape, matched_pts_K1_L.shape)
 
 #ransac for getting R,t
 
+ok, rvec, tvec, inl = cv.solvePnPRansac(matched_World_points, matched_pts_K1_L, K, None, iterationsCount=200, reprojectionError= 3.0, confidence=0.999)
 
+T_wc = np.eye(4)
+T_wc[:3, :3] = cv.Rodrigues(rvec)[0]
+T_wc[:3, 3] = tvec.ravel()
+
+#predict and compute the residuals
+R = T_wc[:3, :3]
+t = T_wc[:3, 3]
+
+X_cam = R@ matched_World_points.mT + t.reshape(3, 1)
+
+# print(R.shape, t.shape, matched_World_points.mT.shape)
 
 
