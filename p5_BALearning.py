@@ -44,8 +44,13 @@ V_K0_R = pts2[:,1]
 
 initial_disparity = U_K0_L - U_K0_R
 
-d_min = 1
-d_max = (f*B)/ 2
+# depth cap: far points have tiny disparity, so their depth is mostly noise
+#   Z = f*B/d  ->  Z < Z_max  <=>  d > f*B/Z_max
+Z_max = 40 # m, ~10 px disparity on KITTI
+Z_min = 2 # m
+
+d_min = (f*B)/ Z_max
+d_max = (f*B)/ Z_min
 
 
 row_mask = np.abs(V_K0_L - V_K0_R) < 2
@@ -318,6 +323,26 @@ def build_J_global(T, X_w):
 
     return J[valid_rows]
 
+# Huber: quadratic for small residuals, linear for large ones, so a few bad matches can't dominate
+#   rho(r) = 1/2 r^2             |r| <= delta
+#            delta (|r| - delta/2) |r| >  delta
+# solved by IRLS: weight each residual row by w = rho'(r)/r and do weighted least squares
+#   w = 1                        |r| <= delta
+#       delta / |r|              |r| >  delta
+
+huber_delta = 1.0 # px
+
+def huber_cost(res):
+    a = np.abs(res)
+    quad = a <= huber_delta
+    return np.sum(0.5 * res[quad]**2) + np.sum(huber_delta * (a[~quad] - 0.5 * huber_delta))
+
+def huber_weights(res):
+    a = np.abs(res)
+    w = np.ones_like(res)
+    w[a > huber_delta] = huber_delta / a[a > huber_delta]
+    return w
+
 T_est = T_cw.copy()
 X_est = matched_World_points[inl].copy()
 
@@ -325,34 +350,39 @@ damp = 1e-3
 max_iter = 20
 
 res = stack_residuals(T_est, X_est)
-cost = 0.5 * res @ res
+cost = huber_cost(res)
 J = build_J_global(T_est, X_est)
 
-print(f"iter  0  cost {cost:10.3f}  RMS {np.sqrt(np.mean(res**2)):.4f} px")
+print(f"iter  0  cost {cost:10.3f}  RMS {np.sqrt(np.mean(res**2)):.4f} px  rows > delta {np.sum(np.abs(res) > huber_delta)}")
 
 for it in range(1, max_iter + 1):
-    H = J.mT @ J
-    g = J.mT @ res
+    # weights from the current residuals; scaling rows by sqrt(w) gives J^T W J and J^T W r
+    sqrt_w = np.sqrt(huber_weights(res))
+    J_w = J * sqrt_w[:, None]
+    res_w = res * sqrt_w
+
+    H = J_w.mT @ J_w
+    g = J_w.mT @ res_w
 
     delta_x = np.linalg.solve(H + damp * np.eye(n_par), -g)
-
     # try the step: LEFT update for the pose (same rule as Jacobian 2), plain add for points
     T_try = se3_exp(delta_x[:6]) @ T_est
     X_try = X_est + delta_x[6:].reshape(n_pts, 3)
 
     res_try = stack_residuals(T_try, X_try)
-    cost_try = 0.5 * res_try @ res_try
+    cost_try = huber_cost(res_try) # compare Huber cost with Huber cost
 
     if cost_try < cost:
         cost_drop = cost - cost_try
 
         T_est, X_est, res, cost = T_try, X_try, res_try, cost_try
         J = build_J_global(T_est, X_est) # re-linearise only after an accepted step
-        damp /= 10
+        damp = max(damp / 10, 1e-7) # floor: below this the damping does nothing useful
 
-        print(f"iter {it:2d}  cost {cost:10.3f}  RMS {np.sqrt(np.mean(res**2)):.4f} px  |dx| {np.linalg.norm(delta_x):.2e}  damp {damp:.0e}  accepted")
+        print(f"iter {it:2d}  cost {cost:10.3f}  RMS {np.sqrt(np.mean(res**2)):.4f} px  rows > delta {np.sum(np.abs(res) > huber_delta)}  |dx| {np.linalg.norm(delta_x):.2e}  damp {damp:.0e}  accepted")
 
-        if cost_drop < 1e-6 * cost or np.linalg.norm(delta_x) < 1e-8:
+        # IRLS reweights every step, so the tail creeps down slowly; stop once gains are < 0.01%
+        if cost_drop < 1e-4 * cost or np.linalg.norm(delta_x) < 1e-8:
             print("converged")
             break
     else:
